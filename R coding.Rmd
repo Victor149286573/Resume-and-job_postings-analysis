@@ -1,0 +1,470 @@
+---
+title: "STAT 3011 project"
+output:
+  pdf_document: default
+  html_document: default
+date: "2023-02-07"
+---
+
+```{r}
+#install.packages("rvest")
+library(rvest)
+#install.packages("dplyr")
+library(dplyr)
+
+# 1 Download Html files and combine them into one file
+path="C:/Users/22600/3011/bookcamp_code/Case_Study4/job_postings"
+setwd(path)
+
+filestoread <- list.files(path=path,pattern="\\.html$")
+htmlfiles <- lapply(filestoread,function(x)try(read_html(x,encoding="UTF-8")))
+
+l=length(htmlfiles)
+cat("We have loaded",l, "HTML files.")
+```
+```{r}
+# 2 Parse html files
+
+#install.packages("XML")
+#install.packages("bitops")
+#install.packages("RCurl")
+
+library(XML)
+library(bitops)
+library(RCurl)
+library(xml2)
+
+setwd(dir=path)
+soup <- lapply(filestoread,function(x)try(htmlParse(read_html(x))))
+```
+
+```{r}
+# 3 Parse html files into titles and bodies
+
+setwd(path)
+library(rvest)
+library(bitops)
+library(RCurl)
+library(xml2)
+library(dplyr)
+html_title <- c()
+html_body <- c()
+for(i in 1:l)
+{ 
+  ##[[]] in list can get content
+  title_now <- htmlfiles[[i]]  %>% html_nodes("title") %>% html_text()
+  body_now <- htmlfiles[[i]]  %>% html_nodes("body") %>% html_text()
+  if(is.na(title_now)||is.na(body_now)) next#vector function can do more research 
+  html_title <- c(html_title,title_now)
+  html_body <- c(html_body,body_now)
+}
+```
+
+```{r}
+# 4 find duplicated data
+
+setwd(path)
+
+#install.packages("psych")
+library(psych)
+#install.packages("Hmisc")
+library(Hmisc)
+#di<-Hmisc::describe(html_title) #list #di[[1]]
+Hmisc::describe(html_title)[[1]]
+Hmisc::describe(html_title)[[4]]
+Hmisc::describe(html_body)[[1]]
+Hmisc::describe(html_body)[[4]]
+cat("No duplicated jd")
+```
+
+```{r,}
+#5 View the jobs ad
+library(htmltools)#
+rstudioapi::viewer(filestoread[[1]])
+rstudioapi::viewer(filestoread[[2]])
+```
+
+```{r}
+# 6 get html bullets contents
+html_bullets<-c()
+all_bullets<-c()
+for(i in 1:l)
+{ 
+  content_now<-htmlfiles[[i]] %>% html_nodes("li") %>% html_text()  
+  html_bullets<-c(html_bullets,list(content_now))
+  text_now<-cbind(rep(i,length(content_now)),content_now)
+  all_bullets<-rbind(all_bullets,text_now)
+}
+all_bullets<-as.data.frame(all_bullets)
+names(all_bullets)[1]<-"ID"
+
+```
+
+```{r}
+#7 Measuring the percent of bulleted postings
+bullet_posting_count<-l
+for(i in 1:l)
+  if(identical(html_bullets[[i]], character(0))){
+    bullet_posting_count=bullet_posting_count-1
+  }
+percentage=paste(round(100*bullet_posting_count/l, 2), "%", sep="")
+cat("We have",percentage,"postings have bullets.")
+```
+```{r}
+#8. Examining the top-ranked words in the HTML bullet
+
+#install.packages("superml")
+library(superml)
+memory.limit(102400)
+
+tfv1 <- TfIdfVectorizer$new(remove_stopwords = TRUE)
+tf_mat <- tfv1$fit_transform(html_bullets[1:100]) 
+# As R is not so fast, I only use 1:100 to train dataset
+
+sumtfidf<-apply(tf_mat,2,sum)
+sort_sumtfidf<-sort(sumtfidf,decreasing = TRUE)
+print(sort_sumtfidf[1:20])
+# data  experience           0   character    learning    analysis 
+#    9.120730    8.200802    5.098987    5.043706    4.344551    3.527487 
+#      skills     ability     machine    business         etc statistical 
+#    3.416570    3.373315    3.353241    3.348667    3.047458    3.030214 
+#        work           s   knowledge     science       tools       using 
+#    2.909485    2.815685    2.682757    2.658730    2.655961    2.591210 
+#           c      models 
+#    2.571423    2.484782 
+   
+#Because in R, the stopwords may be a little different, there are some
+#strange words not removed. But, totally, the top-ranked words are similar
+#to those in python, like data, experienced, skills, ability, and work.
+#They are in top 20.
+```
+```{r}
+#9. Examining the top-ranked words in the HTML bodies
+library(stringr)
+a= html_body[1:100]
+for(i in 1:100){
+  if(length(html_bullets[[i]])==0) next
+  for(j in 1:length(html_bullets[[i]]))
+  {
+      a[i]=gsub(pattern=html_bullets[[i]][j],'',a[i],fixed=TRUE) 
+      #fixed=TRUE can deal with ()
+  }
+}
+#Here a is 1:100 html body without bullets
+```
+
+```{r}
+#9.5 Apply
+memory.limit(102400)
+
+tfv1 <- TfIdfVectorizer$new(remove_stopwords = TRUE)
+tf_mat1 <- tfv1$fit_transform(a[1:100]) 
+# As R is not so fast, I only use 1:100 to train dataset
+
+sumtfidf1<-apply(tf_mat1,2,sum)
+sort_sumtfidf1<-sort(sumtfidf1,decreasing = TRUE)
+print(sort_sumtfidf1[1:20])
+#  data           will              s      scientist           team 
+#       8.035170       4.390359       3.092829       3.003871       2.961091 
+#       business           work     experience        company         skills 
+#       2.948415       2.897609       2.772783       2.411203       2.335719 
+#         people            job       learning          world       research 
+#       2.333163       2.277602       2.214172       2.175225       2.159508 
+#        science          using       required qualifications             ca 
+#       2.130768       2.052147       2.045169       2.005219       1.991207 
+```
+
+```{r}
+#Listing 17. 10. Checking titles for references to data science positions
+regex="Data Scien(ce|tist)"
+index_non_ds_jobs=which(grepl(regex,html_title)==FALSE)
+l_non_ds=length(index_non_ds_jobs) #error in R
+percentage1=paste(round(100*l_non_ds/l, 2), "%", sep="") 
+#error is 0.5%, can be ignored
+cat(percentage1,"% of the job posting titles do not mention a",
+       "data science position. Below is a sample of such titles:\n")
+for(i in index_non_ds_jobs[1:10])
+print(html_title[i])
+```
+
+```{r}
+#Listing 17. 11. Sampling bullets from a non-data science job
+for(i in 1:5)
+print(html_bullets[index_non_ds_jobs[2]][[1]][i])
+```
+
+```{r}
+#Listing 17. 12. Loading the resume
+#Listing 17. 13. Loading the table-of-content
+#Read text
+
+#install.packages("readr")
+library(readr)
+resume <- read_csv("C:/Users/22600/3011/bookcamp_code/Case_Study4/resume.txt")
+table_of_contents <- read_csv("C:/Users/22600/3011/bookcamp_code/Case_Study4/table_of_contents.txt")
+existing_skills<-list(c(resume,table_of_contents))
+```
+
+```{r}
+#Listing 17. 14. Combining skills into a single string
+#Listing 17. 15. Vectorizing our skills and the job-posting data
+text_list<-c(html_body[1:100],existing_skills)
+tfv1 <- TfIdfVectorizer$new(remove_stopwords = TRUE)
+tf_mat2 <- tfv1$fit_transform(text_list)
+l2<-length(text_list)
+```
+
+```{r}
+#Listing 17. 16. Computing skill-based cosine similarities
+
+#install.packages("lsa")
+library(lsa)
+cos_similarities = cosine(t(tf_mat2))
+cos_similarities[l2,]
+
+```
+
+```{r}
+#16.5 set relevance_matrix
+relevance=cos_similarities[l2,][-l2]
+ID=1:(l2-1)
+relevance_matrix=t(rbind(ID,relevance))
+relevance_matrix=relevance_matrix[order(relevance_matrix[,"relevance"],decreasing="T"),]
+index_relevance<-relevance_matrix[,"ID"]
+```
+
+```{r}
+#Listing 17. 17. Printing the 20 least-relevant jobs
+print(html_title[index_relevance[80:100]])
+```
+
+```{r}
+#17. 18. Printing the 20 most-relevant jobs
+print(html_title[index_relevance[1:20]])
+```
+
+```{r}
+#Listing 17. 19. Plotting job-ranking vs relevance
+plot(relevance_matrix[,"relevance"],xlab="Index",ylab="Relevance")
+abline(v=1)
+```
+
+```{r}
+#Listing 17. 20. Adding a cutoff to the relevance plot
+plot(relevance_matrix[,"relevance"],xlab="Index",ylab="Relevance")
+abline(v=13)
+```
+
+```{r}
+#Listing 17. 21. Printing jobs below the relevance cutoff
+print(html_title[index_relevance[1:13]])
+```
+```{r}
+#Listing 17. 22. Printing jobs beyond the relevance cutoff
+print(html_title[index_relevance[14:34]])
+```
+
+```{r}
+#Listing 17. 23. Measuring title relevance in a subset of jobs
+percentage_relevant_titles<-function(df_title)
+{
+regex_relevant="Data (Scien|Analy)" #don't plug in science
+regex_irrelevant="\b(Manage)"
+match_counts=which(grepl(regex_relevant,df_title)==TRUE&grepl(regex_irrelevant,df_title)==FALSE)
+percentage=length(match_counts)/length(df_title) #error in R and 
+return(percentage)
+}
+percentage2=percentage_relevant_titles(html_title[index_relevance[14:34]])
+percentage2=paste(round(100*percentage2,2), "%", sep="")
+# 0.4761905
+cat("Approximately",percentage2,"% of job titles between indices ",
+       "14 - 34 are relevant")
+#Because the base is not same large as that in python, it is reasonable.
+```
+
+```{r}
+#Listing 17. 25. Plotting percent relevance across all title samples
+relevant_title_plot<-function(index_range=10,h,v)
+{
+  percentage3=c()
+  start_indices=100-index_range
+  for(i in 1:start_indices)
+  {
+    df_slice = html_title[index_relevance[i:(i+index_range)]]
+    ##should include(),otherwise only + 10
+    percent= percentage_relevant_titles(df_slice)
+    percentage3=c(percentage3,percent)
+  }
+    plot(1:start_indices,percentage3,xlab="Index",ylab="% Relevant Titles")
+    abline(h=h)
+    abline(v=v)
+    
+}
+relevant_title_plot(h=0.3,v=57)
+
+```
+
+```{r}
+#Listing 17. 26. Plotting percent relevance across an increased index-range
+relevant_title_plot(index_range = 15,v=53,h=0.35)
+
+```
+
+
+```{r}
+# 17. 27. Obtaining bullets from the 30 most-relevant jobs
+total_bullets=c()
+for(i in index_relevance[1:30])
+{ 
+  content_now<-htmlfiles[[i]] %>% html_nodes("li") %>% html_text()  
+  total_bullets<-c(total_bullets,content_now)
+}
+#17. 28. Summarizing basic bullet statistic
+Hmisc::describe(total_bullets)[[1]]
+Hmisc::describe(total_bullets)[[4]]
+
+```
+
+```{r}
+#29 Removing duplicates and vectorizing the bullets
+total_bullets=sort(total_bullets[!duplicated(total_bullets)])
+tfv1 <- TfIdfVectorizer$new(remove_stopwords = TRUE)
+tf_mat3 <- tfv1$fit_transform(total_bullets)
+n1<-nrow(tf_mat3)
+m1<-ncol(tf_mat3)
+print(dim(tf_mat3))
+```
+
+```{r}
+#30. Dimensionally reducing the TFIDF matrix
+s <- svd(tf_mat3)
+d <- diag(s$d) #eigenvalue
+v <- as.matrix(s$v)
+u <- s$u
+
+u2 <- as.matrix(u[,1:100])
+d2 <- as.matrix(d[1:100,1:100])
+v2 <- as.matrix(v[,1:100])
+a2 <- u2 %*% d2
+
+a3 <- normalise2d(a2)
+```
+
+```{r}
+#31. Plotting an elbow curve using Mini Batch K-Means
+library(ClusterR)
+library(cluster)
+  
+inertia_values=c()
+for(k in 1:100)
+{
+  temp= MiniBatchKmeans(a3,clusters = k)
+  inertia_values=c(inertia_values,mean(temp$WCSS_per_cluster) )
+}
+plot(1:100,inertia_values)
+abline(v=10)
+#Choosing cluter k > 10
+```
+
+```{r}
+#32. Clustering bullets into 15 clusters
+#Choosing k
+#install.packages("wordcloud")
+library(wordcloud)
+k=10
+temp= kmeans(a3,k)
+
+cluster<-list()
+cluster_index<-list()
+
+#Cluster
+for(i in 1:k){
+cluster_1_index<-which(temp$cluster==i)
+cluster_index<-c(cluster_index,list(cluster_1_index))
+}
+
+#wordcloud
+#install.packages("wordcloud2")
+library(wordcloud2)
+for(i in 1:k){
+tfv1 <- TfIdfVectorizer$new(remove_stopwords = TRUE)
+tf_mat4 <- tfv1$fit_transform(total_bullets[cluster_index[[i]]])
+sum_tf_mat4<-apply(tf_mat4,2,sum)
+wordcloud(names(sum_tf_mat4),freq=sum_tf_mat4,min.freq = 0.5, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"),max.words = 200)
+#Set low min frequency
+}
+```
+
+```{r}
+print(total_bullets[cluster_index[[4]]])
+#Cluster 4 focused on tech
+
+print(total_bullets[cluster_index[[7]]])
+#Cluster 4 focused on sotf skills
+
+```
+
+```{r}
+# 38. Comparing mean resume similarities
+tfv1 <- TfIdfVectorizer$new(remove_stopwords = TRUE)
+mat5<-c(total_bullets,list(c(resume)))
+tf_mat5 <- tfv1$fit_transform(c(total_bullets,list(c(resume))))
+l5<-length(c(total_bullets,list(c(resume))))
+cos_similarities_mat5 = cosine(t(tf_mat5))
+relevance_mat5=cos_similarities_mat5[l5,][-l5]
+
+ID=1:(l2-1)
+relevance_matrix=t(rbind(ID,relevance))
+relevance_matrix=relevance_matrix[order(relevance_matrix[,"relevance"],decreasing="T"),]
+
+cluster_similarity<-c()
+for(i in 1:k){
+cluster_temp_simliarity=mean(relevance_mat5[cluster_index[[i]]])
+cluster_similarity<-c(cluster_similarity,cluster_temp_simliarity)
+}
+#39. Sorting subplots by resume similarity
+order_similarity <- order(cluster_similarity,decreasing = T)
+```
+
+```{r}
+#40 Plot following orders
+for(i in order_similarity)
+{
+tfv1 <- TfIdfVectorizer$new(remove_stopwords = TRUE)
+tf_mat4 <- tfv1$fit_transform(total_bullets[cluster_index[[i]]])
+sum_tf_mat4<-apply(tf_mat4,2,sum)
+wordcloud(names(sum_tf_mat4),freq=tf_mat4,max.words=100, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+}
+```
+
+```{r}
+#41. Printing sample bullets from Clusters 4 and 7
+set.seed(2)
+
+sample_index_cluster4<-sample(1:length(cluster_index[[4]]),size=5)
+print(total_bullets[cluster_index[[4]][sample_index_cluster4]])
+#Cluster 4 focused on tech
+
+sample_index_cluster7<-sample(1:length(cluster_index[[7]]),size=5)
+print(total_bullets[cluster_index[[7]][sample_index_cluster7]])
+#Cluster 7 focused on sotf skills
+
+#Clusters 1-6 Tech We can plot
+#Clusters 7-10 Soft skills
+```
+
+```{r}
+#k=10/20. However, R is very slow. So I am not able to analysize big data like in python. Here we just run kmeans as k= 10 or 20.
+#We just need to change k to other numbers in chunk 30
+
+```
+
+
+```{r}
+#Here python just analysize 700 jobs like above. The technical part is similar. We just need to change k values or the total values.
+#We just need to change in index_relevance[1:30] chunk 26 to index_relevance[1:m],
+#m be other numbers
+
+```
+
+
